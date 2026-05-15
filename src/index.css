@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-duo-bg text-duo-ink font-display antialiased;
+  }
+}
+
+@layer components {
+  .btn-duo {
+    @apply inline-flex items-center justify-center font-bold uppercase tracking-wide
+           rounded-duo px-6 py-3 select-none transition active:translate-y-1;
+  }
+  .btn-primary {
+    @apply btn-duo bg-duo-green text-white shadow-duo-green active:shadow-none;
+  }
+  .btn-secondary {
+    @apply btn-duo bg-white text-duo-ink shadow-duo border-2 border-gray-200 active:shadow-none;
+  }
+  .card-duo {
+    @apply bg-white rounded-duo shadow-duo border-2 border-gray-100 p-4;
+  }
+}
