@@ -1,7 +1,13 @@
-// 多層 fallback: Google TTS → 瀏覽器合成
-// 手機 Google TTS 常被擋,所以加上 timeout + error 監聽
+// iOS 對音訊政策嚴格: Google TTS 非同步失敗 → fallback 已不在 user gesture → SpeechSynthesis 被擋
+// 所以 iOS 直接走 SpeechSynthesis (同步在 click handler 內呼叫)
+const IS_IOS =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    // iPadOS 13+ 偽裝成 desktop Safari
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
 let currentAudio = null
-const lastPlay = new Map() // text -> timestamp
+const lastPlay = new Map()
 
 export function speak(text, opts = {}) {
   if (!text || typeof window === 'undefined') return
@@ -13,6 +19,12 @@ export function speak(text, opts = {}) {
   const prev = lastPlay.get(key) || 0
   const isRepeat = now - prev < 4000
   lastPlay.set(key, now)
+
+  // iOS: 直接同步呼叫 SpeechSynthesis,不繞 Google TTS
+  if (IS_IOS) {
+    speakNative(text, opts, isRepeat)
+    return
+  }
 
   const url =
     'https://translate.google.com/translate_tts?ie=UTF-8' +
@@ -26,21 +38,19 @@ export function speak(text, opts = {}) {
     if (fellBack) return
     fellBack = true
     try { currentAudio?.pause() } catch {}
-    fallback(text, opts, isRepeat)
+    speakNative(text, opts, isRepeat)
   }
 
   try {
     const a = new Audio()
     a.src = url
-    // 不設 crossOrigin: 純播放不需要 CORS,加了反而觸發 preflight 失敗
     a.preload = 'auto'
     a.addEventListener('error', goFallback)
     a.addEventListener('stalled', goFallback)
     a.addEventListener('abort', goFallback)
-    // 5 秒沒開始播就 fallback
     const watchdog = setTimeout(() => {
       if (a.readyState < 2) goFallback()
-    }, 5000)
+    }, 4000)
     a.addEventListener('playing', () => clearTimeout(watchdog))
     currentAudio = a
     const p = a.play()
@@ -50,27 +60,29 @@ export function speak(text, opts = {}) {
   }
 }
 
-function fallback(text, opts, slow) {
+function speakNative(text, opts, slow) {
   try {
     const synth = window.speechSynthesis
     if (!synth) return
-    // 嘗試挑選英文女聲
+    // iOS 有時要先 cancel 才會真的播
+    synth.cancel()
     const voices = synth.getVoices()
     const u = new SpeechSynthesisUtterance(text)
     u.lang = opts.lang === 'en' ? 'en-US' : opts.lang || 'en-US'
     u.rate = slow ? 0.55 : 0.95
+    u.pitch = 1
+    u.volume = 1
     const enVoice =
-      voices.find((v) => /en[-_]US/i.test(v.lang) && /female|samantha|google|microsoft/i.test(v.name)) ||
+      voices.find((v) => /en[-_]US/i.test(v.lang) && /samantha|alex|female|google|microsoft/i.test(v.name)) ||
       voices.find((v) => /en[-_]US/i.test(v.lang)) ||
       voices.find((v) => /^en/i.test(v.lang))
     if (enVoice) u.voice = enVoice
     synth.speak(u)
   } catch (e) {
-    console.warn('speak fallback failed', e)
+    console.warn('speakNative failed', e)
   }
 }
 
-// 觸發 voices 載入(部分瀏覽器需要)
 if (typeof window !== 'undefined' && window.speechSynthesis) {
   try { window.speechSynthesis.getVoices() } catch {}
   window.speechSynthesis.onvoiceschanged = () => {
